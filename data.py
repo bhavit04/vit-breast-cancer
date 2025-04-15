@@ -8,13 +8,19 @@ from torchvision import transforms
 
 
 class BreastCancerDataset(Dataset):
-    def __init__(self, root, mode, split=0.95):
+    def __init__(self, root, mode, split=0.95, test_mode=False, quick_mode=False):
         if mode not in {"train", "valid"}:
             raise ValueError
         patient_ids = sorted(os.listdir(root))
         split = int(split * len(patient_ids))
         # train validation split
         patient_ids = patient_ids[:split] if mode == "train" else patient_ids[split:]
+        
+        # If in quick mode, use only 10% of patients for faster training
+        if quick_mode:
+            num_patients = len(patient_ids) // 10  # 10% of patients
+            patient_ids = patient_ids[:num_patients]
+            
         self.positives = []
         self.negatives = []
         for patient_id in patient_ids:
@@ -23,14 +29,27 @@ class BreastCancerDataset(Dataset):
                     self.positives.append(image_path)
                 else:
                     self.negatives.append(image_path)
+        
+        # If in test mode, use only first few patients
+        if test_mode:
+            self.positives = self.positives[:2]  # Use only 2 patients for testing
+            self.negatives = self.negatives[:2]  # Use only 2 negative images
 
         # transforms
-        self.transforms = None
+        self.transforms = transforms.Compose([
+            transforms.Resize((224, 224)),  # Resize to match model input
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
         if mode == "train":
             # data augmentation during training
-            self.transforms = transforms.Compose(
-                [transforms.RandomVerticalFlip(), transforms.RandomHorizontalFlip()]
-            )
+            self.transforms = transforms.Compose([
+                transforms.Resize((224, 224)),  # Resize to match model input
+                transforms.RandomVerticalFlip(),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
     
     @property
     def pos_weight(self):
@@ -49,8 +68,7 @@ class BreastCancerDataset(Dataset):
             label = 0.0
             image_path = self.negatives[i - len(self.positives)]
         image = Image.open(image_path)
-        if self.transforms is not None:
-            image = self.transforms(image)
+        image = self.transforms(image)
         return image, label
 
 
@@ -62,8 +80,8 @@ def collate_fn(batch):
 
 
 def make_loaders(config):
-    train_dataset = BreastCancerDataset(config.data_path, "train", config.split)
-    valid_dataset = BreastCancerDataset(config.data_path, "valid", config.split)
+    train_dataset = BreastCancerDataset(config.data_path, "train", config.split, config.test_mode, config.quick_mode)
+    valid_dataset = BreastCancerDataset(config.data_path, "valid", config.split, config.test_mode, config.quick_mode)
     train_loader = DataLoader(
         train_dataset,
         batch_size=config.batch_size,

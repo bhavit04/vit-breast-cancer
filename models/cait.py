@@ -18,7 +18,7 @@ import torch.nn as nn
 from functools import partial
 
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-from timm.models.helpers import build_model_with_cfg, overlay_external_default_cfg
+from timm.models.helpers import build_model_with_cfg
 from timm.models.layers import PatchEmbed, Mlp, DropPath, trunc_normal_
 from timm.models.registry import register_model
 
@@ -441,18 +441,14 @@ def checkpoint_filter_fn(state_dict, model=None):
 
 
 def _create_cait(variant, pretrained=False, **kwargs):
-    if kwargs.get("features_only", None):
-        raise RuntimeError(
-            "features_only not implemented for Vision Transformer models."
-        )
+    if kwargs.get('features_only', None):
+        raise RuntimeError('features_only not implemented for CaiT models.')
 
     model = build_model_with_cfg(
         Cait,
         variant,
         pretrained,
-        default_cfg=default_cfgs[variant],
-        pretrained_filter_fn=checkpoint_filter_fn,
-        **kwargs
+        **kwargs,
     )
     return model
 
@@ -550,7 +546,8 @@ def cait_m48_448(pretrained=False, **kwargs):
 class CaiTWrapper(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        self.backbone = cait_s24_224(pretrained=True, num_classes=1)
+        model_kwargs = {'num_classes': 1}
+        self.backbone = _create_cait('cait_s24_224', pretrained=True, **model_kwargs)
         in_features = self.backbone.head.in_features
         self.backbone.head = nn.Identity()
         self.classifier = nn.Linear(in_features, 1)
